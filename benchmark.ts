@@ -404,6 +404,15 @@ Configuration:
         provider: 'mobula' as const,
         apiKey: MOBULA_API_KEY,
       },
+      t2: {
+        url: `${PROVIDERS.mobula.baseUrl}/1/wallet/trades`,
+        params: {
+          wallet: TEST_ADDRESSES.VITALIK,
+          limit: 100,
+        },
+        provider: 'mobula' as const,
+        apiKey: MOBULA_API_KEY,
+      },
       t4: {
         url: `${PROVIDERS.mobula.baseUrl}/2/token/holder-positions`,
         params: {
@@ -432,6 +441,14 @@ Configuration:
         provider: 'covalent' as const,
         apiKey: COVALENT_API_KEY,
       },
+      t2: {
+        url: `${PROVIDERS.covalent.baseUrl}/v1/eth-mainnet/address/${TEST_ADDRESSES.VITALIK}/transactions_v3/`,
+        params: {
+          'page-size': 100,
+        },
+        provider: 'covalent' as const,
+        apiKey: COVALENT_API_KEY,
+      },
       t4: {
         url: `${PROVIDERS.covalent.baseUrl}/v1/eth-mainnet/tokens/${TEST_ADDRESSES.USDC_ETH}/token_holders_v2/`,
         params: {
@@ -449,6 +466,7 @@ Configuration:
     },
     codex: {
       t1: null, // Codex doesn't support wallet portfolio
+      t2: null, // Codex doesn't support wallet transactions
       t4: null, // Codex doesn't support token holders
       t5: {
         url: PROVIDERS.codex.baseUrl,
@@ -485,6 +503,23 @@ Configuration:
       console.log(formatStats(results[`${provider}_T1_Portfolio`]));
     } else {
       console.log('\n⚠️  T1: WALLET PORTFOLIO SNAPSHOT - Not supported by ' + PROVIDERS[provider].name);
+    }
+
+    // T2: Wallet Transfer Feed
+    if (endpoints[provider].t2) {
+      console.log('\n═══════════════════════════════════════════════════════════════');
+      console.log('  T2: WALLET TRANSFER FEED');
+      console.log('═══════════════════════════════════════════════════════════════');
+
+      const t2Result = await runBenchmark(
+        `T2 - Transfers (vitalik.eth)`,
+        endpoints[provider].t2,
+        iterations
+      );
+      results[`${provider}_T2_Transfers`] = calculateStats(t2Result, iterations);
+      console.log(formatStats(results[`${provider}_T2_Transfers`]));
+    } else {
+      console.log('\n⚠️  T2: WALLET TRANSFER FEED - Not supported by ' + PROVIDERS[provider].name);
     }
 
     // T4: Token Holders Snapshot
@@ -549,7 +584,7 @@ Configuration:
     console.log('  🔬 COMPARATIVE ANALYSIS (Avg Latency)');
     console.log('═══════════════════════════════════════════════════════════════\n');
 
-    ['T1_Portfolio', 'T4_Holders', 'T5_MarketData'].forEach(test => {
+    ['T1_Portfolio', 'T2_Transfers', 'T4_Holders', 'T5_MarketData'].forEach(test => {
       const mobulaKey = `mobula_${test}`;
       const covalentKey = `covalent_${test}`;
 
