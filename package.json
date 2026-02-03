@@ -8,6 +8,7 @@
     "test": "tsx benchmark.ts --iterations=5",
     "mobula": "tsx benchmark.ts --provider=mobula",
     "covalent": "tsx benchmark.ts --provider=covalent",
+    "codex": "tsx benchmark.ts --provider=codex",
     "compare": "tsx benchmark.ts --provider=all"
   },
   "keywords": [

@@ -9,16 +9,18 @@ dotenv.config();
 // Configuration
 const MOBULA_API_KEY = process.env.MOBULA_API_KEY || '';
 const COVALENT_API_KEY = process.env.COVALENT_API_KEY || '';
+const CODEX_API_KEY = process.env.CODEX_API_KEY || '';
 const TIMEOUT_MS = 30000; // 30 seconds
 const WARMUP_CALLS = 2;
 const DEFAULT_ITERATIONS = 10;
 
 // Validate API keys
-if (!MOBULA_API_KEY || !COVALENT_API_KEY) {
+if (!MOBULA_API_KEY || !COVALENT_API_KEY || !CODEX_API_KEY) {
   console.error('❌ Error: Missing API keys!');
   console.error('Please create a .env file with:');
   console.error('  MOBULA_API_KEY=your_key');
   console.error('  COVALENT_API_KEY=your_key');
+  console.error('  CODEX_API_KEY=your_key');
   console.error('\nSee .env.example for reference.');
   process.exit(1);
 }
@@ -29,11 +31,19 @@ const PROVIDERS = {
     name: 'Mobula',
     baseUrl: 'https://api.mobula.io/api',
     auth: (key: string) => ({ Authorization: key }),
+    type: 'rest' as const,
   },
   covalent: {
     name: 'Covalent (GoldRush)',
     baseUrl: 'https://api.covalenthq.com',
     auth: (key: string) => ({ Authorization: `Basic ${Buffer.from(key + ':').toString('base64')}` }),
+    type: 'rest' as const,
+  },
+  codex: {
+    name: 'Codex',
+    baseUrl: 'https://graph.codex.io/graphql',
+    auth: (key: string) => ({ Authorization: key }),
+    type: 'graphql' as const,
   },
 };
 
@@ -70,6 +80,7 @@ interface ProviderEndpoint {
   params: Record<string, any>;
   provider: keyof typeof PROVIDERS;
   apiKey: string;
+  graphqlQuery?: string; // For GraphQL providers
 }
 
 // Calculate statistics from latencies
@@ -124,8 +135,8 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Make API call with timing
-async function timedApiCall(
+// Make API call with timing (REST)
+async function timedRestCall(
   url: string,
   params: Record<string, any>,
   headers: Record<string, string>,
@@ -172,6 +183,66 @@ async function timedApiCall(
   }
 }
 
+// Make API call with timing (GraphQL)
+async function timedGraphQLCall(
+  url: string,
+  query: string,
+  headers: Record<string, string>,
+  captureResponse: boolean = false
+): Promise<{ latency: number | null; response?: any }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const start = performance.now();
+    const result = await axios.post(
+      url,
+      { query },
+      {
+        headers,
+        signal: controller.signal,
+        timeout: TIMEOUT_MS,
+      }
+    );
+    const end = performance.now();
+    clearTimeout(timeoutId);
+    return {
+      latency: end - start,
+      response: captureResponse ? result.data : undefined,
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+
+      // Debug logging
+      if (captureResponse) {
+        console.log('\n❌ GraphQL Error:', axiosError.message);
+        if (axiosError.response) {
+          console.log('Response status:', axiosError.response.status);
+          console.log('Response data:', JSON.stringify(axiosError.response.data).substring(0, 500));
+        }
+      }
+
+      // Handle rate limiting
+      if (axiosError.response?.status === 429) {
+        const retryAfter = parseInt(axiosError.response.headers['retry-after'] || '1', 10);
+        const backoffMs = Math.min(retryAfter * 1000, 4000);
+        await sleep(backoffMs);
+        return { latency: null };
+      }
+
+      // Timeout
+      if (axiosError.code === 'ECONNABORTED' || error.name === 'CanceledError') {
+        return { latency: null };
+      }
+    }
+
+    return { latency: null };
+  }
+}
+
 // Run benchmark for a single endpoint
 async function runBenchmark(
   name: string,
@@ -199,18 +270,34 @@ async function runBenchmark(
 
   console.log(`\n🔗 Provider: ${provider.name}`);
   console.log(`📍 Endpoint: ${endpoint.url}`);
-  console.log(`📋 Params: ${JSON.stringify(endpoint.params, null, 2)}`);
-  console.log(`\n📡 Full URL:\n${fullUrl}`);
-  console.log(`\n💻 cURL Command:`);
-  console.log(`curl -X GET "${fullUrl}" \\`);
-  Object.entries(headers).forEach(([key, value]) => {
-    console.log(`  -H "${key}: ${value}" \\`);
-  });
+
+  if (provider.type === 'graphql' && endpoint.graphqlQuery) {
+    console.log(`📋 GraphQL Query:\n${endpoint.graphqlQuery}`);
+    console.log(`\n💻 cURL Command:`);
+    console.log(`curl -X POST "${endpoint.url}" \\`);
+    Object.entries(headers).forEach(([key, value]) => {
+      console.log(`  -H "${key}: ${value}" \\`);
+    });
+    console.log(`  -d '{"query":"${endpoint.graphqlQuery.replace(/\n/g, ' ').replace(/\s+/g, ' ').replace(/"/g, '\\"')}"}'`);
+  } else {
+    console.log(`📋 Params: ${JSON.stringify(endpoint.params, null, 2)}`);
+    console.log(`\n📡 Full URL:\n${fullUrl}`);
+    console.log(`\n💻 cURL Command:`);
+    console.log(`curl -X GET "${fullUrl}" \\`);
+    Object.entries(headers).forEach(([key, value]) => {
+      console.log(`  -H "${key}: ${value}" \\`);
+    });
+  }
+
   console.log(`\n🔄 ${name} - Warming up (${WARMUP_CALLS} calls)...`);
 
   // Warm-up calls
   for (let i = 0; i < WARMUP_CALLS; i++) {
-    await timedApiCall(endpoint.url, endpoint.params, headers, false);
+    if (provider.type === 'graphql' && endpoint.graphqlQuery) {
+      await timedGraphQLCall(endpoint.url, endpoint.graphqlQuery, headers, false);
+    } else {
+      await timedRestCall(endpoint.url, endpoint.params, headers, false);
+    }
     await sleep(400); // Base backoff
   }
 
@@ -221,7 +308,9 @@ async function runBenchmark(
 
   // Actual benchmark iterations
   for (let i = 0; i < iterations; i++) {
-    const { latency, response } = await timedApiCall(endpoint.url, endpoint.params, headers, i === 0);
+    const { latency, response } = provider.type === 'graphql' && endpoint.graphqlQuery
+      ? await timedGraphQLCall(endpoint.url, endpoint.graphqlQuery, headers, i === 0)
+      : await timedRestCall(endpoint.url, endpoint.params, headers, i === 0);
 
     if (i === 0 && response) {
       sampleResponse = response;
@@ -358,10 +447,21 @@ Configuration:
         apiKey: COVALENT_API_KEY,
       },
     },
+    codex: {
+      t1: null, // Codex doesn't support wallet portfolio
+      t4: null, // Codex doesn't support token holders
+      t5: {
+        url: PROVIDERS.codex.baseUrl,
+        params: {},
+        provider: 'codex' as const,
+        apiKey: CODEX_API_KEY,
+        graphqlQuery: `query { getTokenPrices(inputs: [{ address: "${TEST_ADDRESSES.USDC_ETH}", networkId: 1 }]) { address networkId priceUsd timestamp } }`,
+      },
+    },
   };
 
   const providersToTest = selectedProvider === 'all'
-    ? (['mobula', 'covalent'] as const)
+    ? (['mobula', 'covalent', 'codex'] as const)
     : [selectedProvider as keyof typeof endpoints];
 
   // Run benchmarks for each provider
@@ -371,43 +471,55 @@ Configuration:
     console.log(`╚═══════════════════════════════════════════════════════════════╝`);
 
     // T1: Wallet Portfolio Snapshot
-    console.log('\n═══════════════════════════════════════════════════════════════');
-    console.log('  T1: WALLET PORTFOLIO SNAPSHOT');
-    console.log('═══════════════════════════════════════════════════════════════');
+    if (endpoints[provider].t1) {
+      console.log('\n═══════════════════════════════════════════════════════════════');
+      console.log('  T1: WALLET PORTFOLIO SNAPSHOT');
+      console.log('═══════════════════════════════════════════════════════════════');
 
-    const t1Result = await runBenchmark(
-      `T1 - Portfolio (vitalik.eth)`,
-      endpoints[provider].t1,
-      iterations
-    );
-    results[`${provider}_T1_Portfolio`] = calculateStats(t1Result, iterations);
-    console.log(formatStats(results[`${provider}_T1_Portfolio`]));
+      const t1Result = await runBenchmark(
+        `T1 - Portfolio (vitalik.eth)`,
+        endpoints[provider].t1,
+        iterations
+      );
+      results[`${provider}_T1_Portfolio`] = calculateStats(t1Result, iterations);
+      console.log(formatStats(results[`${provider}_T1_Portfolio`]));
+    } else {
+      console.log('\n⚠️  T1: WALLET PORTFOLIO SNAPSHOT - Not supported by ' + PROVIDERS[provider].name);
+    }
 
     // T4: Token Holders Snapshot
-    console.log('\n═══════════════════════════════════════════════════════════════');
-    console.log('  T4: TOKEN HOLDERS SNAPSHOT');
-    console.log('═══════════════════════════════════════════════════════════════');
+    if (endpoints[provider].t4) {
+      console.log('\n═══════════════════════════════════════════════════════════════');
+      console.log('  T4: TOKEN HOLDERS SNAPSHOT');
+      console.log('═══════════════════════════════════════════════════════════════');
 
-    const t4Result = await runBenchmark(
-      `T4 - Holders (USDC)`,
-      endpoints[provider].t4,
-      iterations
-    );
-    results[`${provider}_T4_Holders`] = calculateStats(t4Result, iterations);
-    console.log(formatStats(results[`${provider}_T4_Holders`]));
+      const t4Result = await runBenchmark(
+        `T4 - Holders (USDC)`,
+        endpoints[provider].t4,
+        iterations
+      );
+      results[`${provider}_T4_Holders`] = calculateStats(t4Result, iterations);
+      console.log(formatStats(results[`${provider}_T4_Holders`]));
+    } else {
+      console.log('\n⚠️  T4: TOKEN HOLDERS SNAPSHOT - Not supported by ' + PROVIDERS[provider].name);
+    }
 
     // T5: Token Price & Market Data
-    console.log('\n═══════════════════════════════════════════════════════════════');
-    console.log('  T5: TOKEN PRICE & MARKET DATA');
-    console.log('═══════════════════════════════════════════════════════════════');
+    if (endpoints[provider].t5) {
+      console.log('\n═══════════════════════════════════════════════════════════════');
+      console.log('  T5: TOKEN PRICE & MARKET DATA');
+      console.log('═══════════════════════════════════════════════════════════════');
 
-    const t5Result = await runBenchmark(
-      `T5 - Market Data (USDC)`,
-      endpoints[provider].t5,
-      iterations
-    );
-    results[`${provider}_T5_MarketData`] = calculateStats(t5Result, iterations);
-    console.log(formatStats(results[`${provider}_T5_MarketData`]));
+      const t5Result = await runBenchmark(
+        `T5 - Market Data (USDC)`,
+        endpoints[provider].t5,
+        iterations
+      );
+      results[`${provider}_T5_MarketData`] = calculateStats(t5Result, iterations);
+      console.log(formatStats(results[`${provider}_T5_MarketData`]));
+    } else {
+      console.log('\n⚠️  T5: TOKEN PRICE & MARKET DATA - Not supported by ' + PROVIDERS[provider].name);
+    }
   }
 
   // Summary table
