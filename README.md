@@ -1,21 +1,33 @@
-# Mobula API Benchmark
+# Multi-Provider Blockchain API Benchmark
 
-Benchmark Mobula API avec la méthodologie Covalent pour valider les performances.
+Benchmark Mobula, Covalent (GoldRush), et Codex avec la méthodologie officielle de Covalent.
+
+## 🎯 Providers Testés
+
+| Provider | T1 Portfolio | T4 Holders | T5 Market Data | Type |
+|----------|--------------|------------|----------------|------|
+| **Mobula** | ✅ | ✅ | ✅ | REST |
+| **Covalent (GoldRush)** | ✅ | ✅ | ✅ | REST |
+| **Codex** | ❌ | ❌ | ✅ | GraphQL |
 
 ## Tests Implémentés
 
 ### T1: Wallet Portfolio Snapshot
-- Endpoint: `/api/1/wallet/portfolio`
+- **Mobula**: `/api/1/wallet/portfolio`
+- **Covalent**: `/v1/eth-mainnet/address/{wallet}/balances_v2/`
 - Test wallet: vitalik.eth (`0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045`)
 - Mesure: Latence pour récupérer les balances + prix USD
 
 ### T4: Token Holders Snapshot
-- Endpoint: `/api/2/token/holder-positions`
+- **Mobula**: `/api/2/token/holder-positions`
+- **Covalent**: `/v1/eth-mainnet/tokens/{token}/token_holders_v2/`
 - Test token: USDC Ethereum (`0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`)
 - Mesure: Latence pour récupérer 100 holders
 
 ### T5: Token Price & Market Data
-- Endpoint: `/api/1/market/data`
+- **Mobula**: `/api/1/market/data`
+- **Covalent**: `/v1/pricing/historical_by_addresses_v2/...`
+- **Codex**: GraphQL `getTokenPrices`
 - Test token: USDC Ethereum
 - Mesure: Latence pour récupérer prix + market cap + volume
 
@@ -39,14 +51,20 @@ npm install
 ## Usage
 
 ```bash
-# Benchmark par défaut (10 iterations)
-npm run benchmark
+# Test tous les providers (Mobula + Covalent + Codex)
+npm run compare
+
+# Test un provider spécifique
+npm run mobula      # Mobula seulement
+npm run covalent    # Covalent seulement
+npm run codex       # Codex seulement (T5 uniquement)
 
 # Test rapide (5 iterations)
 npm run test
 
 # Custom iterations
-npm run benchmark -- --iterations=25
+npm run compare -- --iterations=25
+npm run mobula -- --iterations=50
 ```
 
 ## Résultats
