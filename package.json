@@ -1,0 +1,30 @@
+{
+  "name": "mobula-benchmark",
+  "version": "1.0.0",
+  "description": "Mobula API Benchmark - Covalent methodology comparison",
+  "main": "benchmark.ts",
+  "scripts": {
+    "benchmark": "tsx benchmark.ts",
+    "test": "tsx benchmark.ts --iterations=5",
+    "mobula": "tsx benchmark.ts --provider=mobula",
+    "covalent": "tsx benchmark.ts --provider=covalent",
+    "compare": "tsx benchmark.ts --provider=all"
+  },
+  "keywords": [
+    "benchmark",
+    "mobula",
+    "api",
+    "covalent"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.5",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
