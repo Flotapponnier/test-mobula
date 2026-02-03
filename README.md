@@ -4,11 +4,11 @@ Benchmark Mobula, Covalent (GoldRush), et Codex avec la méthodologie officielle
 
 ## 🎯 Providers Testés
 
-| Provider | T1 Portfolio | T4 Holders | T5 Market Data | Type |
-|----------|--------------|------------|----------------|------|
-| **Mobula** | ✅ | ✅ | ✅ | REST |
-| **Covalent (GoldRush)** | ✅ | ✅ | ✅ | REST |
-| **Codex** | ❌ | ❌ | ✅ | GraphQL |
+| Provider | T1 Portfolio | T2 Transfers | T4 Holders | T5 Market Data | Type |
+|----------|--------------|--------------|------------|----------------|------|
+| **Mobula** | ✅ | ✅ | ✅ | ✅ | REST |
+| **Covalent (GoldRush)** | ✅ | ✅ | ✅ | ✅ | REST |
+| **Codex** | ❌ | ❌ | ❌ | ✅ | GraphQL |
 
 ## Tests Implémentés
 
@@ -17,6 +17,12 @@ Benchmark Mobula, Covalent (GoldRush), et Codex avec la méthodologie officielle
 - **Covalent**: `/v1/eth-mainnet/address/{wallet}/balances_v2/`
 - Test wallet: vitalik.eth (`0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045`)
 - Mesure: Latence pour récupérer les balances + prix USD
+
+### T2: Wallet Transfer Feed
+- **Mobula**: `/api/1/wallet/trades`
+- **Covalent**: `/v1/eth-mainnet/address/{wallet}/transactions_v3/`
+- Test wallet: vitalik.eth (`0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045`)
+- Mesure: Latence pour récupérer 100 transactions/transfers
 
 ### T4: Token Holders Snapshot
 - **Mobula**: `/api/2/token/holder-positions`
